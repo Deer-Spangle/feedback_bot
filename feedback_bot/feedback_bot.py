@@ -9,6 +9,13 @@ class Channel:
         self.options = options
         self.feedback_group_id = feedback_group_id
 
+    @property
+    def buttons(self) -> List[Button]:
+        return [
+            Button.inline(option, f"option:{n}")
+            for n, option in enumerate(self.options)
+        ]
+
     @classmethod
     def from_json(cls, config: Dict):
         return cls(config["channel_id"], config["options"], config["feedback_group_id"])
@@ -27,11 +34,19 @@ class FeedbackBot:
         await self.client.edit_message(
             event.chat,
             event.message,
-            buttons=[
-                Button.inline(option, f"option:{n}")
-                for n, option in enumerate(channel.options)
-            ]
+            buttons=channel.buttons
         )
+
+    async def handle_forwarded_message(self, event: events.NewMessage.Event) -> None:
+        channel = self.channel_dict.get(event.chat_id)
+        if not channel:
+            return
+        await self.client.send_message(
+            event.chat,
+            event.message,
+            buttons=channel.buttons
+        )
+        await self.client.delete_messages(event.chat, [event.message.id])
 
     async def handle_callback_button(self, event: events.CallbackQuery.Event) -> None:
         if not event.data.startswith(b"option:"):
@@ -51,8 +66,19 @@ class FeedbackBot:
         )
 
     def start(self) -> None:
-        self.client.add_event_handler(self.handle_new_message, events.NewMessage(chats=list(self.channel_dict.keys())))
-        self.client.add_event_handler(self.handle_callback_button, events.CallbackQuery(pattern="^option:"))
+        channel_ids = list(self.channel_dict.keys())
+        self.client.add_event_handler(
+            self.handle_new_message,
+            events.NewMessage(chats=channel_ids, forwards=False)
+        )
+        self.client.add_event_handler(
+            self.handle_forwarded_message,
+            events.NewMessage(chats=channel_ids, forwards=True)
+        )
+        self.client.add_event_handler(
+            self.handle_callback_button,
+            events.CallbackQuery(pattern="^option:")
+        )
         self.client.run_until_disconnected()
 
     @classmethod

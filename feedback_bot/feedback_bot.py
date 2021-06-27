@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Union
 
 from telethon import events, TelegramClient, Button
 
@@ -10,10 +10,15 @@ class Channel:
         self.feedback_group_id = feedback_group_id
 
     @property
-    def buttons(self) -> List[Button]:
+    def buttons(self) -> Union[List[Button], List[List[Button]]]:
+        if isinstance(self.options[0], list):
+            return [
+                [Button.inline(option, f"option:{option}") for option in row]
+                for row in self.options
+            ]
         return [
-            Button.inline(option, f"option:{n}")
-            for n, option in enumerate(self.options)
+            Button.inline(option, f"option:{option}")
+            for option in self.options
         ]
 
     @classmethod
@@ -56,7 +61,7 @@ class FeedbackBot:
             return
         user = event.sender
         user_name = " ".join(filter(None, [user.first_name, user.last_name]))
-        option = channel.options[int(event.data.decode().split(":")[-1])]
+        option = event.data.decode().split(":", 1)[1]
         await self.client.send_message(
             channel.feedback_group_id, f"User [{user_name}](tg://user?id=user.id) has sent feedback: {option}",
             parse_mode="markdown"

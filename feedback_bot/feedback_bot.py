@@ -47,7 +47,7 @@ class Channel:
 
     def list_options(self) -> List[str]:
         if isinstance(self.options[0], list):
-            return sum(self.options, start=[])
+            return sum(self.options, [])
         return self.options
 
     @classmethod

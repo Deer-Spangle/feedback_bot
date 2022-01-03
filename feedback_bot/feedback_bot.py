@@ -104,7 +104,7 @@ class FeedbackBot:
         user_name = " ".join(filter(None, [user.first_name, user.last_name]))
         option = event.data.decode().split(":", 1)[1]
         latest_press.labels(channel_id=event.chat_id, option=option).set_to_current_time()
-        msg_count.labels(channel_id=event.chat_id, option=option).inc()
+        press_count.labels(channel_id=event.chat_id, option=option).inc()
         await self.client.send_message(
             channel.feedback_group_id, f"User [{user_name}](tg://user?id=user.id) has sent feedback: {option}",
             parse_mode="markdown"

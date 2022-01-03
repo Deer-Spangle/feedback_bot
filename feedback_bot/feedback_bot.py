@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict, Union, Optional
 
 from prometheus_client import Gauge, Counter, start_http_server
@@ -25,6 +26,7 @@ press_count = Counter(
     "Total number of feedback buttons pressed by the bot",
     labelnames=["channel_id", "option"]
 )
+logger = logging.getLogger(__name__)
 
 
 class Channel:
@@ -75,6 +77,7 @@ class FeedbackBot:
             return
         latest_msg.labels(channel_id=event.chat_id, reformat_type="edit").set_to_current_time()
         msg_count.labels(channel_id=event.chat_id, reformat_type="edit").inc()
+        logger.info("Editing message")
         await self.client.edit_message(
             event.chat,
             event.message,
@@ -87,6 +90,7 @@ class FeedbackBot:
             return
         latest_msg.labels(channel_id=event.chat_id, reformat_type="resend").set_to_current_time()
         msg_count.labels(channel_id=event.chat_id, reformat_type="resend").inc()
+        logger.info("Resending message")
         await self.client.send_message(
             event.chat,
             event.message,
@@ -105,6 +109,7 @@ class FeedbackBot:
         option = event.data.decode().split(":", 1)[1]
         latest_press.labels(channel_id=event.chat_id, option=option).set_to_current_time()
         press_count.labels(channel_id=event.chat_id, option=option).inc()
+        logger.info(f"Button press received: {option}")
         await self.client.send_message(
             channel.feedback_group_id, f"User [{user_name}](tg://user?id=user.id) has sent feedback: {option}",
             parse_mode="markdown"
@@ -129,6 +134,7 @@ class FeedbackBot:
             events.CallbackQuery(pattern="^option:")
         )
         start_http_server(self.prom_port)
+        logger.info("Handlers registered, running")
         self.client.run_until_disconnected()
 
     @classmethod

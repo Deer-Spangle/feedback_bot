@@ -42,7 +42,7 @@ class Channel:
         self.channel_id = channel_id
         self.options = options
         self.feedback_group_id = feedback_group_id
-        self.delay_feedback = False
+        self.delay_feedback = delay_feedback
 
     @property
     def buttons(self) -> Union[List[Button], List[List[Button]]]:

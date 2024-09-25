@@ -1,4 +1,6 @@
 import logging
+import random
+import datetime
 from typing import List, Dict, Union, Optional
 
 from prometheus_client import Gauge, Counter, start_http_server
@@ -30,10 +32,17 @@ logger = logging.getLogger(__name__)
 
 
 class Channel:
-    def __init__(self, channel_id: int, options: Union[List[str], List[List[str]]], feedback_group_id: int):
+    def __init__(
+            self,
+            channel_id: int,
+            options: Union[List[str], List[List[str]]],
+            feedback_group_id: int,
+            delay_feedback: bool,
+    ):
         self.channel_id = channel_id
         self.options = options
         self.feedback_group_id = feedback_group_id
+        self.delay_feedback = False
 
     @property
     def buttons(self) -> Union[List[Button], List[List[Button]]]:
@@ -54,10 +63,18 @@ class Channel:
 
     @classmethod
     def from_json(cls, config: Dict):
-        return cls(config["channel_id"], config["options"], config["feedback_group_id"])
+        return cls(
+            config["channel_id"],
+            config["options"],
+            config["feedback_group_id"],
+            config.get("delay_feedback", False),
+        )
 
 
 class FeedbackBot:
+    RAND_DELAY_MIN_SECONDS = 4 * 60 * 60
+    RAND_DELAY_MAX_SECONDS = 12 * 60 * 60
+
     def __init__(self, client: TelegramClient, channels: List[Channel], prom_port: Optional[int] = None):
         self.client = client
         self.channels = channels
@@ -110,12 +127,20 @@ class FeedbackBot:
         latest_press.labels(channel_id=event.chat_id, option=option).set_to_current_time()
         press_count.labels(channel_id=event.chat_id, option=option).inc()
         logger.info(f"Button press received: {option}")
+        schedule_time = None
+        schedule_time_fwd = None
+        if channel.delay_feedback:
+            random_delay_seconds = random.randrange(self.RAND_DELAY_MIN_SECONDS, self.RAND_DELAY_MAX_SECONDS)
+            random_delay = datetime.timedelta(seconds=random_delay_seconds)
+            schedule_time = datetime.datetime.now(datetime.timezone.utc) + random_delay
+            schedule_time_fwd = schedule_time + datetime.timedelta(seconds=10)
         await self.client.send_message(
             channel.feedback_group_id, f"User [{user_name}](tg://user?id=user.id) has sent feedback: {option}",
-            parse_mode="markdown"
+            parse_mode="markdown",
+            schedule=schedule_time,
         )
         await self.client.forward_messages(
-            channel.feedback_group_id, event.message_id, event.chat_id
+            channel.feedback_group_id, event.message_id, event.chat_id, schedule=schedule_time_fwd,
         )
 
     def start(self) -> None:

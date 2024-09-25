@@ -130,6 +130,7 @@ class FeedbackBot:
         schedule_time = None
         schedule_time_fwd = None
         if channel.delay_feedback:
+            logger.info("Delaying feedback posting")
             random_delay_seconds = random.randrange(self.RAND_DELAY_MIN_SECONDS, self.RAND_DELAY_MAX_SECONDS)
             random_delay = datetime.timedelta(seconds=random_delay_seconds)
             schedule_time = datetime.datetime.now(datetime.timezone.utc) + random_delay

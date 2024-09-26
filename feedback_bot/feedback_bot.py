@@ -178,7 +178,8 @@ class FeedbackBot:
             self.handle_callback_button,
             events.CallbackQuery(pattern="^option:")
         )
-        self.schedule_task = asyncio.create_task(self.schedule_store.run())
+        loop = asyncio.get_event_loop()
+        self.schedule_task = loop.create_task(self.schedule_store.run())
         start_http_server(self.prom_port)
         logger.info("Handlers registered, running")
         self.client.run_until_disconnected()

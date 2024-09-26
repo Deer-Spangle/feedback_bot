@@ -143,6 +143,7 @@ class FeedbackBot:
             await self.client.forward_messages(
                 channel.feedback_group_id, event.message_id, event.chat_id,
             )
+            return
         # Otherwise, calculate the delay
         logger.info("Delaying feedback posting")
         random_delay_seconds = random.randrange(self.RAND_DELAY_MIN_SECONDS, self.RAND_DELAY_MAX_SECONDS)

@@ -1,11 +1,14 @@
+import asyncio
 import logging
 import random
 import datetime
+from asyncio import Task
 from typing import List, Dict, Union, Optional
 
 from prometheus_client import Gauge, Counter, start_http_server
 from telethon import events, TelegramClient, Button
 
+from feedback_bot.schedule_store import ScheduleStore, ScheduledMessage, ScheduledForward
 
 start_time = Gauge("feedbackbot_start_unixtime", "Unix timestamp of the last time the bot was started")
 latest_msg = Gauge(
@@ -74,12 +77,15 @@ class Channel:
 class FeedbackBot:
     RAND_DELAY_MIN_SECONDS = 4 * 60 * 60
     RAND_DELAY_MAX_SECONDS = 12 * 60 * 60
+    SCHEDULE_STORE_FILE = "scheduled_post_store.json"
 
     def __init__(self, client: TelegramClient, channels: List[Channel], prom_port: Optional[int] = None):
         self.client = client
         self.channels = channels
         self.channel_dict = {channel.channel_id: channel for channel in channels}
         self.prom_port = prom_port or 7066
+        self.schedule_store = ScheduleStore.load_from_json(client)
+        self.schedule_task: Optional[Task] = None
         for chan in channels:
             for reformat_type in ["edit", "resend"]:
                 latest_msg.labels(channel_id=chan.channel_id, reformat_type=reformat_type)
@@ -127,22 +133,35 @@ class FeedbackBot:
         latest_press.labels(channel_id=event.chat_id, option=option).set_to_current_time()
         press_count.labels(channel_id=event.chat_id, option=option).inc()
         logger.info(f"Button press received: {option}")
-        schedule_time = None
-        schedule_time_fwd = None
-        if channel.delay_feedback:
-            logger.info("Delaying feedback posting")
-            random_delay_seconds = random.randrange(self.RAND_DELAY_MIN_SECONDS, self.RAND_DELAY_MAX_SECONDS)
-            random_delay = datetime.timedelta(seconds=random_delay_seconds)
-            schedule_time = datetime.datetime.now(datetime.timezone.utc) + random_delay
-            schedule_time_fwd = schedule_time + datetime.timedelta(seconds=10)
-        await self.client.send_message(
-            channel.feedback_group_id, f"User [{user_name}](tg://user?id=user.id) has sent feedback: {option}",
-            parse_mode="markdown",
-            schedule=schedule_time,
-        )
-        await self.client.forward_messages(
-            channel.feedback_group_id, event.message_id, event.chat_id, schedule=schedule_time_fwd,
-        )
+        # If no delay, post the feedback now
+        if not channel.delay_feedback:
+            await self.client.send_message(
+                channel.feedback_group_id,
+                f"User [{user_name}](tg://user?id={user.id}) has sent feedback: {option}",
+                parse_mode="markdown",
+            )
+            await self.client.forward_messages(
+                channel.feedback_group_id, event.message_id, event.chat_id,
+            )
+        # Otherwise, calculate the delay
+        logger.info("Delaying feedback posting")
+        random_delay_seconds = random.randrange(self.RAND_DELAY_MIN_SECONDS, self.RAND_DELAY_MAX_SECONDS)
+        random_delay = datetime.timedelta(seconds=random_delay_seconds)
+        schedule_time = datetime.datetime.now(datetime.timezone.utc) + random_delay
+        # And schedule the messages
+        self.schedule_store.schedule(ScheduledMessage(
+            channel.feedback_group_id,
+            schedule_time,
+            user_name,
+            user.id,
+            option,
+        ))
+        self.schedule_store.schedule(ScheduledForward(
+            channel.feedback_group_id,
+            schedule_time,
+            event.message_id,
+            event.chat_id,
+        ))
 
     def start(self) -> None:
         start_time.set_to_current_time()
@@ -159,9 +178,13 @@ class FeedbackBot:
             self.handle_callback_button,
             events.CallbackQuery(pattern="^option:")
         )
+        self.schedule_task = asyncio.create_task(self.schedule_store.run())
         start_http_server(self.prom_port)
         logger.info("Handlers registered, running")
         self.client.run_until_disconnected()
+        logger.info("Shutting down")
+        self.schedule_store.stop()
+        logger.info("Shutdown complete")
 
     @classmethod
     def from_config(cls, config: Dict) -> 'FeedbackBot':

@@ -131,8 +131,11 @@ class ScheduleStore:
 
     @classmethod
     def load_from_json(cls, client: TelegramClient) -> "ScheduleStore":
-        with open(cls.FILENAME, "r") as f:
-            raw_data = json.load(f)
+        try:
+            with open(cls.FILENAME, "r") as f:
+                raw_data = json.load(f)
+        except FileNotFoundError:
+            return cls([], client)
         scheduled_posts = [ScheduledPost.from_json(data) for data in raw_data["scheduled_posts"]]
         return cls(scheduled_posts, client)
 

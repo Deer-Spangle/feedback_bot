@@ -158,6 +158,7 @@ class ScheduleStore:
             if post.schedule_time < now:
                 await post.send_message(self.client)
                 self.scheduled_posts.remove(post)
+                self.save_to_json()
 
     async def run(self) -> None:
         self.running = True

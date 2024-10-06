@@ -75,8 +75,6 @@ class Channel:
 
 
 class FeedbackBot:
-    RAND_DELAY_MIN_SECONDS = 4 * 60 * 60
-    RAND_DELAY_MAX_SECONDS = 12 * 60 * 60
     SCHEDULE_STORE_FILE = "scheduled_post_store.json"
 
     def __init__(self, client: TelegramClient, channels: List[Channel], prom_port: Optional[int] = None):
@@ -146,9 +144,8 @@ class FeedbackBot:
             return
         # Otherwise, calculate the delay
         logger.info("Delaying feedback posting")
-        random_delay_seconds = random.randrange(self.RAND_DELAY_MIN_SECONDS, self.RAND_DELAY_MAX_SECONDS)
-        random_delay = datetime.timedelta(seconds=random_delay_seconds)
-        schedule_time = datetime.datetime.now(datetime.timezone.utc) + random_delay
+        now_time = datetime.datetime.now(datetime.timezone.utc)
+        schedule_time = now_time.replace(hour=0, minute=0, second=0) + datetime.timedelta(days=1)
         # And schedule the messages
         self.schedule_store.schedule(ScheduledMessage(
             channel.feedback_group_id,
